@@ -1,5 +1,5 @@
 #Requires AutoHotkey v2+
-#Include <Includes/Basic>
+; #Include <Includes\Basic>
 ; Git Repository Synchronization Tool
 ; This script automates the synchronization of multiple git repositories
 
@@ -46,7 +46,8 @@ Class GitRepoGui {
 		myGui := Gui(guiOptions, "Git Repository Manager")
 		SettingsGui.mainGui := myGui
 		; myGui.SetFont("s10")
-		myGui.BackColor := GuiColors.mColors['darkgray']
+		; myGui.BackColor := GuiColors.mColors['darkgray']
+		myGui.BackColor := StrReplace('#D3D3D3', '#', '0x')  ; Light gray color
 		myGui.SetFont('s10 Q5', 'Segoe UI')
 		myGUi.Font := 'Segoe UI'
 
@@ -693,7 +694,8 @@ class SettingsGui {
 	static Create() {
 		settingsGui := Gui("+Owner" . this.mainGui.Hwnd . " +ToolWindow", "Repository Settings")
 		; settingsGui := Gui("+Owner" . mainGui.Hwnd . " +ToolWindow", "Repository Settings")
-		settingsGui.BackColor := GuiColors.mColors['darkgray']
+		; settingsGui.BackColor := GuiColors.mColors['darkgray']
+		settingsGui.BackColor := StrReplace('#D3D3D3', '#', '0x')  ; Light gray color
 		settingsGui.SetFont('s10 Q5', 'Segoe UI')
 		
 		; Settings controls
@@ -739,7 +741,8 @@ class SettingsGui {
 class AddRepoGui {
 	static Create() {
 		addGui := Gui("+Owner" . SettingsGui.mainGui.Hwnd . " +ToolWindow", "Add Repository")
-		addGui.BackColor := GuiColors.mColors['darkgray']
+		; addGui.BackColor := GuiColors.mColors['darkgray']
+		addGui.BackColor := StrReplace('#D3D3D3', '#', '0x')  ; Light gray color
 		addGui.SetFont('s10 Q5', 'Segoe UI')
 		
 		; Local repo section
@@ -818,7 +821,8 @@ class AddRepoGui {
 	static ShowExistingRepos() {
 		; Create a GUI to show existing repositories
 		repoGui := Gui("+Owner" . SettingsGui.mainGui.Hwnd . " +ToolWindow", "Existing Repositories")
-		repoGui.BackColor := GuiColors.mColors['darkgray']
+		; repoGui.BackColor := GuiColors.mColors['darkgray']
+		repoGui.BackColor := StrReplace('#D3D3D3', '#', '0x')  ; Light gray color
 		repoGui.SetFont('s10 Q5', 'Segoe UI')
 		
 		; Add ListView to show repos
