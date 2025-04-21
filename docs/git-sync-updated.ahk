@@ -1,7 +1,9 @@
 #Requires AutoHotkey v2+
-; #Include <Includes\Basic>
+#Include <Includes\Basic>
 ; Git Repository Synchronization Tool
 ; This script automates the synchronization of multiple git repositories
+
+
 
 ; Define your repositories
 class GitRepo {
@@ -16,531 +18,594 @@ class GitRepo {
 		this.branch := branchRepo
 	}
 }
-GitRepoGui
+
+GitRepoGui()
+
+/**
+ * @class GitRepoGui
+ * @description GUI class to manage Git repository synchronization
+ * @version 1.1.0
+ * @author OvercastBTC
+ */
 Class GitRepoGui {
+
+	#Requires AutoHotkey v2+
+	logger := ErrorLogger("GitRepoGui")
 	; GUI class to manage the Git repository synchronization tool
 	__New() {
-
 		; Array of repositories to manage
-		repos := [
-			GitRepo("https://github.com/OvercastBTC/AHK.Standard.Lib", "C:\Users\bacona\AppData\Local\Programs\AutoHotkey\v2\Lib"),
-			; GitRepo("https://github.com/OvercastBTC/AHK.User.Lib", "C:\Users\bacona\Documents\AutoHotkey\Lib"),
+		this.repos := [
+			GitRepo("https://github.com/OvercastBTC/AHK.Standard.Lib", "C:\Users\" A_UserName "\AppData\Local\Programs\AutoHotkey\v2\Lib"),
 			GitRepo("https://github.com/OvercastBTC/AHK.User.Lib", A_MyDocuments "\AutoHotkey\Lib"),
-			GitRepo("https://github.com/OvercastBTC/Personal", "C:\Users\bacona\AppData\Local\Programs\AutoHotkey\v2\Personal"),
-			GitRepo("https://github.com/OvercastBTC/AHK.ObjectTypeExtensions", "C:\Users\bacona\AppData\Local\Programs\AutoHotkey\v2\Lib\Extensions"),
-			GitRepo("https://github.com/OvercastBTC/AHK.Projects.v2", "C:\Users\bacona\AppData\Local\Programs\AutoHotkey\v2\AHK.Projects.v2"),
-			GitRepo("https://github.com/OvercastBTC/AHK.ExplorerClassicContextMenu", "C:\Users\bacona\AppData\Local\Programs\AutoHotkey\v2\AHK.Projects.v2\AHK.ExplorerClassicContextMenu")
+			GitRepo("https://github.com/OvercastBTC/Personal", "C:\Users\" A_UserName "\AppData\Local\Programs\AutoHotkey\v2\Personal"),
+			GitRepo("https://github.com/OvercastBTC/AHK.ObjectTypeExtensions", "C:\Users\" A_UserName "\AppData\Local\Programs\AutoHotkey\v2\Lib\Extensions"),
+			GitRepo("https://github.com/OvercastBTC/AHK.Projects.v2", "C:\Users\" A_UserName "\AppData\Local\Programs\AutoHotkey\v2\AHK.Projects.v2"),
+			GitRepo("https://github.com/OvercastBTC/AHK.ExplorerClassicContextMenu", "C:\Users\" A_UserName "\AppData\Local\Programs\AutoHotkey\v2\AHK.Projects.v2\AHK.ExplorerClassicContextMenu")
 		]
 
 		; Load settings first
 		this.settings := Settings.Load()
+		
+		; Add dynamically loaded repos from settings to the predefined list
+		for repo in this.settings.repos {
+			; Check if the repo is already in our list (avoid duplication)
+			isDuplicate := false
+			for existingRepo in this.repos {
+				if (repo.remote = existingRepo.remote) {
+					isDuplicate := true
+					break
+				}
+			}
+			
+			if (!isDuplicate)
+				this.repos.Push(repo)
+		}
 
 		; Set up sync scheduler if enabled
-		if this.settings.autoSync{
+		if this.settings.autoSync {
 			SyncScheduler.Schedule(this.settings.autoSync)
 		}
 
 		; Create GUI
-		guiOptions := ' +ReSize'
-		; guiOptions .= ' +AlwaysOnTop'
-		myGui := Gui(guiOptions, "Git Repository Manager")
-		SettingsGui.mainGui := myGui
-		; myGui.SetFont("s10")
-		; myGui.BackColor := GuiColors.mColors['darkgray']
-		myGui.BackColor := StrReplace('#D3D3D3', '#', '0x')  ; Light gray color
-		myGui.SetFont('s10 Q5', 'Segoe UI')
-		myGUi.Font := 'Segoe UI'
+		guiOptions := '+ReSize +MinSize600x400'
+		this.myGui := Gui(guiOptions, "Git Repository Manager")
+		SettingsGui.mainGui := this.myGui
+		
+		this.myGui.BackColor := GuiColors.Git.Selection
+		this.myGui.SetFont('s10 Q5', 'Segoe UI')
 
 		; Add title
-		myGui.AddText("w800 h30 Center", "Git Repository Synchronization Tool")
-		myGui.AddText("w800 h2 0x10")  ; Horizontal Line
+		this.myGui.AddText("w800 h30 Center", "Git Repository Synchronization Tool")
+		this.myGui.AddText("w800 h2 0x10")  ; Horizontal Line
+
+		; Add menu with Settings and Add Repository options
+		this.AddMenu()
 
 		; Modify the ListView columns order and data display
-		LV := myGui.AddListView("w800 h300", ["Repository", "Status", "Submodule Status", "Last Synced", "Local Path"])
+		this.LV := this.myGui.AddListView("w800 h300", 
+			["Repository", "Status", "Submodule Status", "Last Synced", "Local Path"])
 
 		; Populate ListView with repos
-		for repo in repos {
-			repoName := gitSplitPath(repo.remote).filename
+		for repo in this.repos {
+			repoName := PathUtility.SplitPath(repo.remote).filename
 			formattedPath := PathFormatter.FormatPath(repo.local)
 			; Updated column order matches ListView definition
-			LV.Add(, repoName, "Not checked", "Checking...", "Never", formattedPath)
+			this.LV.Add(, repoName, "Not checked", "Checking...", "Never", formattedPath)
 		}
 
-		; ; After populating the ListView, call AutosizeColumns
-		; AutosizeColumns(LV)
-
 		; Add buttons
-		buttonGroup := myGui.AddGroupBox("w800 h100", "Actions")
-		btnCheckAll := myGui.AddButton("xm+10 yp+30 w180 h40", "Check All Repositories").OnEvent("Click", CheckAllRepos)
-		btnPush := myGui.AddButton("x+20 w180 h40", "Push Local to Remote").OnEvent("Click", PushToRemote)
-		btnPull := myGui.AddButton("x+20 w180 h40", "Pull from Remote").OnEvent("Click", PullFromRemote)
-		btnInit := myGui.AddButton("x+20 w180 h40", "Initialize Repositories").OnEvent("Click", InitRepos)
+		this.buttonGroup := this.myGui.AddGroupBox("w800 h100", "Actions")
+		this.btnCheckAll := this.myGui.AddButton("xm+10 yp+30 w180 h40", "Check All Repositories")
+			.OnEvent("Click", this.CheckAllRepos.Bind(this))
+		this.btnPush := this.myGui.AddButton("x+20 w180 h40", "Push Local to Remote")
+			.OnEvent("Click", this.PushToRemote.Bind(this))
+		this.btnPull := this.myGui.AddButton("x+20 w180 h40", "Pull from Remote")
+			.OnEvent("Click", this.PullFromRemote.Bind(this))
+		this.btnInit := this.myGui.AddButton("x+20 w180 h40", "Initialize Repositories")
+			.OnEvent("Click", this.InitRepos.Bind(this))
 
-		; Add log window
-		myGui.AddText("xm w800 h20", "Operation Log:")
-		; Add log window
-		myGui.AddText("xm w800 h20", "Operation Log:")
-		logEdit := myGui.AddEdit("xm w800 h200 ReadOnly -Wrap")
+		; Add operations log
+		this.myGui.AddText("xm w800 h20", "Operation Log:")
+		this.logEdit := this.myGui.AddEdit("xm w800 h200 ReadOnly -Wrap", "")
 
 		; Initialize log with history
-		LogManager.InitializeLog(logEdit)
+		LogManager := LogManager()
+		LogManager.InitializeLog(this.logEdit)
 
-		; ; Show the GUI
-		myGui.Show()
-		; myGui.Show("Hide")      ; Create but don't show yet
-		
-		; Run initial check
-		CheckAllRepos()
-		
-		; Enable and show GUI
-		myGui.Opt("-Disabled")  ; Re-enable GUI
-		myGui.Show('AutoSize')           ; Now show it
-
-		; After populating the ListView, call AutosizeColumns
-		AutosizeColumns(LV)
-
-		; Store control references as class properties
-		this.myGui := myGui
-		this.LV := LV
-		this.buttonGroup := buttonGroup
-		this.logEdit := logEdit
-		this.btnCheckAll := btnCheckAll
-		this.btnPush := btnPush
-		this.btnPull := btnPull
-		this.btnInit := btnInit
-
-		; Calculate button sizes based on text
-		this.buttons := [btnCheckAll, btnPush, btnPull, btnInit]
-		maxWidth := GetMaxButtonWidth(this.buttons)
+		; Store control references for resizing
+		this.buttons := [this.btnCheckAll, this.btnPush, this.btnPull, this.btnInit]
 		
 		; Add resize handler
-		myGui.OnEvent("Size", GuiSize)
+		this.myGui.OnEvent("Size", this.GuiSize.Bind(this))
+		
+		; Create but don't show yet
+		this.myGui.Show("Hide")      
+		
+		; Run initial check
+		this.CheckAllRepos()
+		
+		; Enable and show GUI
+		this.myGui.Opt("-Disabled")  
+		this.myGui.Show('AutoSize')
+		
+		; Make columns fit content
+		; this.AutosizeColumns(this.LV)
+		; Auto-size columns
+		Loop this.LV.GetCount("Column"){
+			this.LV.ModifyCol(A_Index, "AutoHdr")
+		}
+		this.AutosizeColumns(this.LV)  ; Ensure columns fit content after modification
+	}
 
-		; Function to check all repositories
-		CheckAllRepos(*) {
-			LogMsg("Checking all repositories...")
+	/**
+	 * @description Adds the main menu to the GUI
+	 */
+	AddMenu() {
+		fileMenu := Menu()
+		fileMenu.Add("Add Repository", (*) => AddRepoGui.Create().Show())
+		fileMenu.Add("Settings", (*) => SettingsGui.Show())
+		fileMenu.Add("Exit", (*) => this.myGui.Destroy())
+
+		helpMenu := Menu()
+		helpMenu.Add("About", (*) => MsgBox("Git Repository Manager v1.1.0`nAuthor: OvercastBTC", "About"))
+		helpMenu.Add("Help", (*) => this.ShowHelp())
+
+		mainMenu := MenuBar()
+		mainMenu.Add("&File", fileMenu)
+		mainMenu.Add("&Help", helpMenu)
+		
+		this.myGui.MenuBar := mainMenu
+	}
+
+	/**
+	 * @description Shows help information
+	 */
+	ShowHelp() {
+		helpText := "Git Repository Manager`n`n"
+		helpText .= "This tool helps you manage multiple Git repositories in one place.`n`n"
+		helpText .= "Features:`n"
+		helpText .= "- Check status of all repositories`n"
+		helpText .= "- Push local changes to remote repositories`n"
+		helpText .= "- Pull changes from remote repositories`n"
+		helpText .= "- Initialize or repair repository configuration`n"
+		helpText .= "- Add new repositories to track`n"
+		helpText .= "- Automatic synchronization with scheduler`n`n"
+		helpText .= "For usage instructions, please see the documentation."
+		
+		MsgBox(helpText, "Help", "Info")
+	}
+
+	/**
+	 * @description Check all repositories and update their status (instance method)
+	 */
+	CheckAllRepos(*) {
+		this.LogMsg("Checking all repositories...")
+		
+		for i, repo in this.repos {
+			repoName := PathUtility.SplitPath(repo.remote).filename
+			this.LogMsg("Checking " . repoName . "...")
 			
-			for i, repo in repos {
-				repoName := gitSplitPath(repo.remote).filename
-				LogMsg("Checking " . repoName . "...")
-				
+			try {
 				; Check directory
 				if !DirExist(repo.local) {
-					LV.Modify(i, , , "Local directory missing", "N/A", "Never")
+					this.LV.Modify(i, , , "Local directory missing", "N/A", "Never")
 					continue
 				}
 				
 				; Check git repo
 				if !DirExist(repo.local . "\.git") {
-					LV.Modify(i, , , "Not a Git repository", "N/A", "Never")
+					this.LV.Modify(i, , , "Not a Git repository", "N/A", "Never")
 					continue
 				}
 				
 				; Check status including submodules
-				status := CheckGitRepoStatus(repo)
-				LV.Modify(i, , , status.status, status.submoduleStatus, FormatTime(, "yyyy-MM-dd HH:mm:ss"))
+				status := this.CheckGitRepoStatus(repo)
+				this.LV.Modify(i, , , status.status, status.submoduleStatus, FormatTime(, "yyyy-MM-dd HH:mm:ss"))
 			}
-			
-			LogMsg("Repository check complete.")
+			catch as err {
+				; Use ErrorLogger's static Log method instead
+				ErrorLogger.LogErrorProps(err)
+				; Update GUI
+				this.LogMsg("Error checking " . repoName . ": " . err.Message)
+				this.LV.Modify(i, , , "Error", "Error", FormatTime(, "yyyy-MM-dd HH:mm:ss"))
+			}
 		}
+		
+		this.LogMsg("Repository check complete.")
+		
+		; Resize columns to fit content
+		this.AutosizeColumns(this.LV)
+	}
 
-		; Function to check detailed Git repository status
-		CheckGitRepoStatus(repo) {
-			; Check remote
-			remoteOutput := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git remote -v')
-			if !InStr(remoteOutput, repo.remote)
-				return {status: "Wrong remote URL", submoduleStatus: "N/A"}
-			
-			; Check branch
-			branchOutput := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git branch')
-			if !InStr(branchOutput, repo.branch)
-				return {status: "Branch not found", submoduleStatus: "N/A"}
-			
-			; Check submodules first
-			submoduleStatus := SubmoduleManager.CheckAndUpdateSubmodules(repo.local)
-			
-			; Check for changes
+	/**
+	 * @description Check the status of a single Git repository
+	 * @param {GitRepo} repo The repository to check
+	 * @returns {Object} Status information for the repository
+	 */
+	CheckGitRepoStatus(repo) {
+		; Check remote
+		remoteOutput := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git remote -v')
+		if !InStr(remoteOutput, repo.remote)
+			return {status: "Wrong remote URL", submoduleStatus: "N/A"}
+		
+		; Check branch
+		branchOutput := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git branch')
+		if !InStr(branchOutput, repo.branch)
+			return {status: "Branch not found", submoduleStatus: "N/A"}
+		
+		; Check submodules first
+		submoduleStatus := SubmoduleManager.CheckAndUpdateSubmodules(repo.local)
+		
+		; Check for changes
+		statusOutput := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git status --porcelain')
+		
+		return {
+			status: statusOutput ? "Changes pending" : "Repository ready",
+			submoduleStatus: submoduleStatus,
+			lastUpdate: FormatTime(FileGetTime(repo.local "\.git\HEAD"), "yyyy-MM-dd HH:mm:ss")
+		}
+	}
+
+	/**
+	 * @description Push local changes to the remote repository
+	 */
+	PushToRemote(*) {
+		row := this.LV.GetNext(0)
+		if !row {
+			MsgBox("Please select a repository first.", "Repository Required", "Info")
+			return
+		}
+		
+		repo := this.repos[row]
+		repoName := PathUtility.SplitPath(repo.remote).filename
+		
+		this.LogMsg("Checking status of " . repoName . "...")
+		
+		try {
+			; First check if we're in a git repository
+			if !DirExist(repo.local . "\.git") {
+				this.LogMsg("Error: Not a git repository: " . repo.local)
+				return
+			}
+
+			; Check for submodules
+			if FileExist(repo.local . "\.gitmodules") {
+				this.LogMsg("Submodules detected. Updating submodules first...")
+				
+				; Initialize and update submodules
+				output := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git submodule update --init --recursive')
+				this.LogMsg("Submodule update result: " . output)
+				
+				; Check submodule status
+				output := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git submodule status')
+				this.LogMsg("Submodule status: " . output)
+			}
+
+			; Get status before push
 			statusOutput := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git status --porcelain')
-			
-			return {
-				status: statusOutput ? "Changes pending" : "Repository ready",
-				submoduleStatus: submoduleStatus,
-				lastUpdate: FormatTime(FileGetTime(repo.local "\.git\HEAD"), "yyyy-MM-dd HH:mm:ss")
-			}
-		}
-
-		; Function to push local to remote
-		PushToRemote(*) {
-			row := LV.GetNext(0)
-			if !row {
-				MsgBox("Please select a repository first.")
+			if !statusOutput {
+				this.LogMsg("No changes to commit in " . repoName)
 				return
 			}
-			
-			repo := repos[row]
-			repoName := gitSplitPath(repo.remote).filename
-			
-			LogMsg("Checking status of " . repoName . "...")
-			
-			try {
-				; First check if we're in a git repository
-				if !DirExist(repo.local . "\.git") {
-					LogMsg("Error: Not a git repository: " . repo.local)
-					return
-				}
 
-				; Check for submodules
-				if FileExist(repo.local . "\.gitmodules") {
-					LogMsg("Submodules detected. Updating submodules first...")
-					
-					; Initialize and update submodules
-					output := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git submodule update --init --recursive')
-					LogMsg("Submodule update result: " . output)
-					
-					; Check submodule status
-					output := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git submodule status')
-					LogMsg("Submodule status: " . output)
-				}
-
-				; Get status before push
-				statusOutput := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git status --porcelain')
-				if !statusOutput {
-					LogMsg("No changes to commit in " . repoName)
-					return
-				}
-
-				; Stage and commit changes including submodules
-				LogMsg("Staging changes...")
-				output := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git add -A')
-				
-				; Commit with detailed message
-				commitMsg := Format("Auto-sync commit from {1}`nTimestamp: {2}`nStatus before commit:`n{3}",
-					A_ComputerName,
-					FormatTime(, "yyyy-MM-dd HH:mm:ss"),
-					statusOutput)
-					
-				output := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git commit -m "' . commitMsg . '"')
-				LogMsg("Commit result: " . output)
-				
-				; Push changes
-				LogMsg("Pushing changes to remote...")
-				output := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git push --recurse-submodules=on-demand origin ' . repo.branch)
-				LogMsg("Push result: " . output)
-				
-				LV.Modify(row, , , "Pushed to remote", FormatTime(, "yyyy-MM-dd HH:mm:ss"))
-			}
-			catch as e {
-				LogMsg("Error: " . e.Message . "`nCommand output: " . (IsSet(output) ? output : "No output"))
-				MsgBox("Error pushing repository. Check the log for details.", "Push Error", "Icon!")
-			}
-		}
-
-		; Function to pull from remote
-		PullFromRemote(*) {
-			row := LV.GetNext(0)
-			if !row {
-				MsgBox("Please select a repository first.")
-				return
-			}
+			; Stage and commit changes including submodules
+			this.LogMsg("Staging changes...")
+			output := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git add -A')
 			
-			repo := repos[row]
-			repoName := gitSplitPath(repo.remote).filename
-			
-			LogMsg("Pulling " . repoName . " from remote...")
-			
-			try {
-				; Backup untracked files first
-				backupDir := A_Temp . "\git_backup_" . FormatTime(,"yyyyMMdd_HHmmss")
-				DirCreate(backupDir)
-				output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git ls-files --others --exclude-standard > " . backupDir . "\untracked_files.txt")
-				
-				; Fetch and reset to remote
-				output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git fetch origin && git reset --hard origin/" . repo.branch)
-				LogMsg(output)
-				LV.Modify(row, , , , "Pulled from remote", FormatTime(,"yyyy-MM-dd HH:mm:ss"))
-				
-				; Inform about backup
-				LogMsg("Untracked files list saved to: " . backupDir . "\untracked_files.txt")
-			}
-			catch as e {
-				LogMsg("Error: " . e.Message)
-			}
-		}
-
-		; Function to initialize repositories
-		InitRepos(*) {
-			row := LV.GetNext(0)
-			if !row {
-				MsgBox("Please select a repository first.")
-				return
-			}
-			
-			repo := repos[row]
-			repoName := gitSplitPath(repo.remote).filename
-			
-			LogMsg("Initializing " . repoName . "...")
-			
-			try {
-				; Create directory if it doesn't exist
-				if !DirExist(repo.local) {
-					DirCreate(repo.local)
-					LogMsg("Created directory: " . repo.local)
-				}
-				
-				; Enhanced check for existing Git repository
-				if DirExist(repo.local . "\.git") {
-					LogMsg("Found existing Git repository. Checking configuration...")
-					
-					; Check if the remote URL matches
-					remoteOutput := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git remote -v")
-					
-					if InStr(remoteOutput, repo.remote) {
-						LogMsg("Remote URL already correctly configured.")
-					} else {
-						; Check if origin exists
-						if InStr(remoteOutput, "origin") {
-							output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git remote set-url origin " . repo.remote)
-							LogMsg("Updated existing remote URL to: " . repo.remote)
-						} else {
-							output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git remote add origin " . repo.remote)
-							LogMsg("Added remote 'origin' with URL: " . repo.remote)
-						}
-					}
-					
-					; Check if branch exists
-					branchOutput := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git branch")
-					
-					if !InStr(branchOutput, repo.branch) {
-						LogMsg("Creating branch '" . repo.branch . "' tracking remote...")
-						output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git fetch origin && git checkout -b " . repo.branch . " --track origin/" . repo.branch)
-						LogMsg(output)
-					} else {
-						; Make sure the branch is correctly tracking
-						trackingOutput := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git branch -vv")
-						
-						if !InStr(trackingOutput, "origin/" . repo.branch) {
-							LogMsg("Setting correct tracking for branch '" . repo.branch . "'...")
-							output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git branch --set-upstream-to=origin/" . repo.branch . " " . repo.branch)
-							LogMsg(output)
-						} else {
-							LogMsg("Branch '" . repo.branch . "' already correctly tracking remote.")
-						}
-					}
-				} else {
-					; Initialize a completely new repository
-					LogMsg("No Git repository found. Initializing new repository...")
-					output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git init && git remote add origin " . repo.remote)
-					LogMsg("Initialized new Git repository and added remote.")
-					
-					; Try to fetch and track the remote branch
-					fetchOutput := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git fetch origin")
-					LogMsg("Fetched remote repository.")
-					
-					; Check if the remote branch exists
-					branchOutput := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git branch -r")
-					
-					if InStr(branchOutput, "origin/" . repo.branch) {
-						output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git checkout -b " . repo.branch . " --track origin/" . repo.branch)
-						LogMsg("Created local branch tracking remote branch '" . repo.branch . "'.")
-					} else {
-						; Create an empty branch with the right name
-						output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git checkout --orphan " . repo.branch)
-						LogMsg("Created new branch '" . repo.branch . "'. Remote branch does not exist yet.")
-					}
-				}
-				
-				; Update status
-				LV.Modify(row, , , , "Repository configured", FormatTime(,"yyyy-MM-dd HH:mm:ss"))
-			}
-			catch as e {
-				LogMsg("Error: " . e.Message)
-			}
-		}
-
-		; ; Helper function to execute command and get output
-		; RunCmdAndGetOutput(cmd, maxRetries := 3) {
-		; 	loop maxRetries {
-		; 		try {
-		; 			tempFile := A_Temp . "\git_cmd_output.txt"
-		; 			RunWait("cmd.exe /c " . cmd . " > " . tempFile . " 2>&1",, "Hide")
-		; 			output := FileRead(tempFile)
-		; 			FileDelete(tempFile)
-		; 			return output
-		; 		}
-		; 		catch as e {
-		; 			if A_Index = maxRetries
-		; 				throw e
-		; 			Sleep(1000)  ; Wait before retry
-		; 		}
-		; 	}
-		; }
-
-		; Helper function to add messages to the log
-		; Add persistent log handling
-		LogMsg(msg) {
-			static logFile := A_ScriptDir . "\git_sync_history.log"
-			
-			; Format message with computer name and timestamp
-			formattedMsg := Format("[{1}][{2}][{3}] {4}", 
+			; Commit with detailed message
+			commitMsg := Format("Auto-sync commit from {1}`nTimestamp: {2}`nStatus before commit:`n{3}",
 				A_ComputerName,
-				FormatTime(, "yyyy-MM-dd"),
-				FormatTime(, "HH:mm:ss"),
-				msg)
-			
-			; Update GUI - Add new messages at top
-			logEdit.Value := formattedMsg . "`r`n" . logEdit.Value
-			
-			; Append to log file - Keep chronological order in file
-			try FileAppend(formattedMsg . "`n", logFile)
-		}
-		; LogMsg(msg) {
-		; 	logEdit.Value := FormatTime(,"[yyyy-MM-dd HH:mm:ss] ") . msg . "`r`n" . logEdit.Value
-		; }
-
-		; SplitPath function for v2 (since the built-in doesn't return an object)
-		gitSplitPath(Path) {
-			FileName := ""
-			Dir := ""
-			Ext := ""
-			NameNoExt := ""
-			Drive := ""
-			
-			; Split the path into components
-			SplitPath(Path, &FileName, &Dir, &Ext, &NameNoExt, &Drive)
-			
-			; Return as an object
-			return { path: Path, filename: FileName, dir: Dir, ext: Ext, nameNoExt: NameNoExt, drive: Drive }
-		}
-
-		; Function to add a repository to the ListView
-		AddRepo(repo) {
-			repoName := gitSplitPath(repo.remote).filename
-			LV.Add(, repoName, "Not checked", "Never", repo.local)
-		}
-
-		; Add this after creating the ListView
-		AutosizeColumns(LV) {
-			static LVM_SETCOLUMNWIDTH := 0x101E
-			
-			; Auto-size each column
-			Loop LV.GetCount("Col"){
-				SendMessage(LVM_SETCOLUMNWIDTH, A_Index-1, -2, LV) ; -2 = LVSCW_AUTOSIZE_USEHEADER
-			}
-		}
-
-		CheckSubmodules(repoPath) {
-			if !FileExist(repoPath . "\.gitmodules"){
-				return "No submodules"
-			}
-			output := RunCmdAndGetOutput('cd /d "' . repoPath . '" && git submodule foreach git status --porcelain')
-			if output{
-				return "Submodule changes detected"
-			}
-			return "Submodules synced"
-		}
-
-		GetMaxButtonWidth(params*) {
-			maxWidth := 0
-			for btn in params {
-				; Create temporary GUI to measure text
-				measureGui := Gui("-Caption +ToolWindow")
-				measureGui.SetFont(,myGui.Font)
-				; measureText := measureGui.AddText(, btn.Text)
-				measureText := measureGui.AddText()
-				measureText.GetPos(&x, &y, &w, &h)
-				metrics := {w:w, h:h, x:x, y:y}
-				measureGui.Destroy()
+				FormatTime(, "yyyy-MM-dd HH:mm:ss"),
+				statusOutput)
 				
-				; Add padding (20px on each side)
-				width := metrics.w + 40
-				maxWidth := Max(maxWidth, width)
-			}
-			return maxWidth
+			output := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git commit -m "' . commitMsg . '"')
+			this.LogMsg("Commit result: " . output)
+			
+			; Push changes
+			this.LogMsg("Pushing changes to remote...")
+			output := RunCmdAndGetOutput('cd /d "' . repo.local . '" && git push --recurse-submodules=on-demand origin ' . repo.branch)
+			this.LogMsg("Push result: " . output)
+			
+			; Update status in list view
+			status := this.CheckGitRepoStatus(repo)
+			this.LV.Modify(row, , , status.status, status.submoduleStatus, FormatTime(, "yyyy-MM-dd HH:mm:ss"))
 		}
-
-		GuiSize(thisGui, minMax, width, height) {
-			if minMax = -1    ; If window is minimized
-				return
-
-			; Calculate margins and spacing
-			margin := 10
-			padding := 5
-			
-			; Calculate available width
-			availWidth := width - (2 * margin)
-			
-			; Resize ListView
-			this.LV.Move(margin, margin, availWidth, height * 0.5)
-			
-			; Resize button group and position buttons
-			buttonGroupHeight := 80
-			this.buttonGroup.Move(margin, height * 0.5 + margin, availWidth, buttonGroupHeight)
-			
-			; Calculate button positions
-			btnWidth := GetMaxButtonWidth()
-			totalBtnWidth := (btnWidth + padding) * this.buttons.Length
-			startX := (availWidth - totalBtnWidth) / 2
-			btnY := (height * 0.5 + margin) + 30  ; 30px from top of group box
-			
-			; ; Position buttons
-			; for i, btn in this.buttons {
-			; 	btn.Move(startX + ((i-1) * (btnWidth + padding)), btnY, btnWidth, 40)
-			; }
-			
-			; Resize log window
-			logY := height * 0.5 + margin + buttonGroupHeight + margin
-			logHeight := height - logY - margin
-			this.logEdit.Move(margin, logY, availWidth, logHeight)
-		}
-
-		AddToolbar() {
-			toolbar := this.myGui.AddToolbar()
-			toolbar.Add("Icon1", "Add Repository", (*) => myGui.Show())
-			toolbar.Add("Icon2", "Settings", (*) => SettingsGui.Show())
-			toolbar.Add("Icon3", "Health Check", (*) => ShowRepoHealth())
-		}
-
-		ShowRepoHealth() {
-			row := this.LV.GetNext(0)
-			if !row
-				return
-				
-			repo := repos[row]
-			metrics := RepoHealth.Check(repo)
-			
-			; Show health report
-			healthGui := Gui("+Owner" . this.myGui.Hwnd, "Repository Health")
-			healthGui.AddText(, "Branch Status: " . metrics.branchStatus)
-			healthGui.AddText(, "Last Commit: " . metrics.lastCommit)
-			healthGui.AddText(, "Submodule Health: " . metrics.submoduleHealth)
-			healthGui.AddText(, "Uncommitted Changes: " . metrics.uncommittedChanges)
-			healthGui.Show()
+		catch as err {
+			; Use ErrorLogger's static Log method instead
+			ErrorLogger.LogErrorProps(err)
+			; Update GUI
+			this.LogMsg("Error checking " . repoName . ": " . err.Message)
+			this.LV.Modify(row, , , "Error", "Error", FormatTime(, "yyyy-MM-dd HH:mm:ss"))
 		}
 	}
-	; Helper function to execute command and get output
-	static RunCmdAndGetOutput(cmd, maxRetries := 3) {
-		loop maxRetries {
-			try {
-				tempFile := A_Temp . "\git_cmd_output.txt"
-				RunWait("cmd.exe /c " . cmd . " > " . tempFile . " 2>&1",, "Hide")
-				output := FileRead(tempFile)
-				FileDelete(tempFile)
-				return output
+
+	/**
+	 * @description Pull changes from the remote repository
+	 */
+	PullFromRemote(*) {
+		row := this.LV.GetNext(0)
+		if !row {
+			MsgBox("Please select a repository first.")
+			return
+		}
+		
+		repo := this.repos[row]
+		repoName := PathUtility.SplitPath(repo.remote).filename
+		
+		this.LogMsg("Pulling " . repoName . " from remote...")
+		
+		try {
+			; Show progress
+			progressGui := ProgressGui.Show("Pulling Repository", "Backing up untracked files...")
+			
+			; Backup untracked files first
+			backupDir := A_Temp . "\git_backup_" . FormatTime(,"yyyyMMdd_HHmmss")
+			DirCreate(backupDir)
+			output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git ls-files --others --exclude-standard > " . backupDir . "\untracked_files.txt")
+			
+			; Update progress
+			progressGui.UpdateText("Fetching from remote...")
+			
+			; Fetch and reset to remote
+			output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git fetch origin && git reset --hard origin/" . repo.branch)
+			this.LogMsg(output)
+			
+			; Update progress
+			progressGui.UpdateText("Updating submodules...")
+			
+			; Update submodules if present
+			if FileExist(repo.local . "\.gitmodules") {
+				this.LogMsg("Updating submodules...")
+				output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git submodule update --init --recursive")
+				this.LogMsg("Submodule update result: " . output)
 			}
-			catch as e {
-				if A_Index = maxRetries
-					throw e
-				Sleep(1000)  ; Wait before retry
-			}
+			
+			; Close progress dialog
+			progressGui.Close()
+			
+			; Update status in list view
+			status := this.CheckGitRepoStatus(repo)
+			this.LV.Modify(row, , , status.status, status.submoduleStatus, FormatTime(,"yyyy-MM-dd HH:mm:ss"))
+			
+			; Inform about backup
+			this.LogMsg("Untracked files list saved to: " . backupDir . "\untracked_files.txt")
+			
+			MsgBox("Successfully pulled latest changes from remote.", "Pull Complete", "Info")
+		}
+		catch as e {
+			; Make sure to close progress dialog on error
+			if IsSet(progressGui)
+				progressGui.Close()
+				
+			errorMsg := "Error: " . e.Message
+			this.LogMsg(errorMsg)
+			ErrorLogger.Log(errorMsg, this.logEdit)
+			MsgBox("Error pulling from repository. Check the log for details.", "Pull Error", "Icon!")
 		}
 	}
-	RunCmdAndGetOutput(cmd, maxRetries := 3) {
-		return GitRepoGui.RunCmdAndGetOutput(cmd, maxRetries)
+
+	/**
+	 * @description Initialize or repair repository configuration
+	 */
+	InitRepos(*) {
+		row := this.LV.GetNext(0)
+		if !row {
+			MsgBox("Please select a repository first.")
+			return
+		}
+		
+		repo := this.repos[row]
+		repoName := PathUtility.SplitPath(repo.remote).filename
+		
+		this.LogMsg("Initializing " . repoName . "...")
+		
+		try {
+			; Create directory if it doesn't exist
+			if !DirExist(repo.local) {
+				DirCreate(repo.local)
+				this.LogMsg("Created directory: " . repo.local)
+			}
+			
+			; Enhanced check for existing Git repository
+			if DirExist(repo.local . "\.git") {
+				this.LogMsg("Found existing Git repository. Checking configuration...")
+				
+				; Check if the remote URL matches
+				remoteOutput := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git remote -v")
+				
+				if InStr(remoteOutput, repo.remote) {
+					this.LogMsg("Remote URL already correctly configured.")
+				} else {
+					; Check if origin exists
+					if InStr(remoteOutput, "origin") {
+						output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git remote set-url origin " . repo.remote)
+						this.LogMsg("Updated existing remote URL to: " . repo.remote)
+					} else {
+						output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git remote add origin " . repo.remote)
+						this.LogMsg("Added remote 'origin' with URL: " . repo.remote)
+					}
+				}
+				
+				; Check if branch exists
+				branchOutput := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git branch")
+				
+				if !InStr(branchOutput, repo.branch) {
+					this.LogMsg("Creating branch '" . repo.branch . "' tracking remote...")
+					output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git fetch origin && git checkout -b " . repo.branch . " --track origin/" . repo.branch)
+					this.LogMsg(output)
+				} else {
+					; Make sure the branch is correctly tracking
+					trackingOutput := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git branch -vv")
+					
+					if !InStr(trackingOutput, "origin/" . repo.branch) {
+						this.LogMsg("Setting correct tracking for branch '" . repo.branch . "'...")
+						output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git branch --set-upstream-to=origin/" . repo.branch . " " . repo.branch)
+						this.LogMsg(output)
+					} else {
+						this.LogMsg("Branch '" . repo.branch . "' already correctly tracking remote.")
+					}
+				}
+			} else {
+				; Initialize a completely new repository
+				this.LogMsg("No Git repository found. Initializing new repository...")
+				output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git init && git remote add origin " . repo.remote)
+				this.LogMsg("Initialized new Git repository and added remote.")
+				
+				; Try to fetch and track the remote branch
+				fetchOutput := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git fetch origin")
+				this.LogMsg("Fetched remote repository.")
+				
+				; Check if the remote branch exists
+				branchOutput := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git branch -r")
+				
+				if InStr(branchOutput, "origin/" . repo.branch) {
+					output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git checkout -b " . repo.branch . " --track origin/" . repo.branch)
+					this.LogMsg("Created local branch tracking remote branch '" . repo.branch . "'.")
+				} else {
+					; Create an empty branch with the right name
+					output := RunCmdAndGetOutput("cd /d " . '"' . repo.local . '"' . " && git checkout --orphan " . repo.branch)
+					this.LogMsg("Created new branch '" . repo.branch . "'. Remote branch does not exist yet.")
+				}
+			}
+			
+			; Update status
+			status := this.CheckGitRepoStatus(repo)
+			this.LV.Modify(row, , , status.status, status.submoduleStatus, FormatTime(,"yyyy-MM-dd HH:mm:ss"))
+			
+			MsgBox("Repository initialized successfully!", "Repository Ready", "Info")
+		}
+		catch as e {
+			errorMsg := "Error: " . e.Message
+			this.LogMsg(errorMsg)
+			ErrorLogger.Git(errorMsg, this.logEdit)
+			MsgBox("Error initializing repository. Check the log for details.", "Init Error", "Icon!")
+		}
+	}
+
+	/**
+	 * @description Log a message to the operations log
+	 * @param {String} msg Message to log
+	 */
+	LogMsg(msg) {
+		; Format message with computer name and timestamp
+		formattedMsg := Format("[{1}][{2}][{3}] {4}", 
+			A_ComputerName,
+			FormatTime(, "yyyy-MM-dd"),
+			FormatTime(, "HH:mm:ss"),
+			msg)
+		
+		; Update GUI - Add new messages at top
+		this.logEdit.Value := formattedMsg . "`r`n" . this.logEdit.Value
+		
+		; Append to log file - Keep chronological order in file
+		try FileAppend(formattedMsg . "`n", A_ScriptDir . "\git_sync_history.log")
+	}
+
+	/**
+	 * @description Auto-size ListView columns to fit their content
+	 * @param {ListView} LV ListView to resize columns
+	 */
+	AutosizeColumns(LV) {
+		static LVM_SETCOLUMNWIDTH := 0x101E
+		
+		; Auto-size each column
+		Loop LV.GetCount("Col") {
+			SendMessage(LVM_SETCOLUMNWIDTH, A_Index-1, -2, LV) ; -2 = LVSCW_AUTOSIZE_USEHEADER
+		}
+	}
+
+	/**
+	 * @description Handle GUI resizing
+	 * @param {Gui} thisGui GUI object
+	 * @param {Integer} minMax Minimized/maximized state
+	 * @param {Integer} width New width
+	 * @param {Integer} height New height
+	 */
+	GuiSize(thisGui, minMax, width, height) {
+		if minMax = -1    ; If window is minimized
+			return
+
+		; Calculate margins and spacing
+		margin := 10
+		padding := 5
+		
+		; Calculate available width
+		availWidth := width - (2 * margin)
+		
+		; Resize ListView
+		this.LV.Move(margin, margin, availWidth, height * 0.5)
+		
+		; Resize button group and position buttons
+		buttonGroupHeight := 80
+		this.buttonGroup.Move(margin, height * 0.5 + margin, availWidth, buttonGroupHeight)
+		
+		; Calculate button positions
+		btnWidth := 180  ; Fixed button width
+		totalBtnWidth := (btnWidth + padding) * this.buttons.Length
+		startX := margin + (availWidth - totalBtnWidth) / 2
+		btnY := (height * 0.5 + margin) + 30  ; 30px from top of group box
+		
+		; Position buttons
+		try for i, btn in this.buttons {
+			btn.Move(startX + ((i-1) * (btnWidth + padding)), btnY, btnWidth, 40)
+		}
+		
+		; Resize log window
+		logY := height * 0.5 + margin + buttonGroupHeight + margin
+		logHeight := height - logY - margin
+		this.logEdit.Move(margin, logY, availWidth, logHeight)
 	}
 }
-RunCmdAndGetOutput(cmd, maxRetries := 3) => GitRepoGui.RunCmdAndGetOutput(cmd, maxRetries)
+/**
+ * @class LogManager
+ * @description Manages logging operations
+ */
+class LogManager {
+	/**
+	 * @description Initializes the log with a given control
+	 * @param {Edit} logEdit The edit control to display logs
+	 */
+	InitializeLog(logEdit) {
+		logEdit.Value := "Log initialized.`r`n"
+	}
+}
 
+/**
+ * @class PathUtility
+ * @description Utility for working with file paths
+ */
+
+class PathUtility {
+	/**
+	 * @description Split a path into its components
+	 * @param {String} Path Path to split
+	 * @returns {Object} Path components
+	 */
+	static SplitPath(Path) {
+		FileName := ""
+		Dir := ""
+		Ext := ""
+		NameNoExt := ""
+		Drive := ""
+		
+		; Split the path into components
+		SplitPath(Path, &FileName, &Dir, &Ext, &NameNoExt, &Drive)
+		
+		; Return as an object
+		return { path: Path, filename: FileName, dir: Dir, ext: Ext, nameNoExt: NameNoExt, drive: Drive }
+	}
+}
+
+/**
+ * @class PathFormatter
+ * @description Format paths for display
+ */
 class PathFormatter {
+	/**
+	 * @description Format a path for display
+	 * @param {String} path Path to format
+	 * @returns {String} Formatted path
+	 */
 	static FormatPath(path) {
 		; Replace backslashes with forward slashes
 		path := StrReplace(path, "\", "/")
@@ -554,8 +619,16 @@ class PathFormatter {
 	}
 }
 
-; Add this class for submodule management
+/**
+ * @class SubmoduleManager
+ * @description Manage Git submodules
+ */
 class SubmoduleManager {
+	/**
+	 * @description Check and update submodules
+	 * @param {String} repoPath Repository path
+	 * @returns {String} Submodule status
+	 */
 	static CheckAndUpdateSubmodules(repoPath) {
 		if !FileExist(repoPath . "\.gitmodules")
 			return "No submodules"
@@ -568,7 +641,7 @@ class SubmoduleManager {
 			RunWait('cd /d "' . repoPath . '" && git submodule update --init --recursive', , "Hide")
 			
 			; Check submodule status
-			output := GitRepoGui().RunCmdAndGetOutput('cd /d "' . repoPath . '" && git submodule foreach git status --porcelain')
+			output := RunCmdAndGetOutput('cd /d "' . repoPath . '" && git submodule foreach git status --porcelain')
 			if output
 				return "Submodule changes pending"
 				
@@ -579,6 +652,11 @@ class SubmoduleManager {
 		}
 	}
 
+	/**
+	 * @description Sync submodules with remote
+	 * @param {String} repoPath Repository path
+	 * @returns {Boolean} True if successful
+	 */
 	static SyncSubmodules(repoPath) {
 		try {
 			; Update submodules
@@ -601,26 +679,94 @@ class SubmoduleManager {
 	}
 }
 
-class ProgressGui {
-	static pg := 0
-	static Show(title, text) {
-		if !IsObject(this.pg)
-			pg := Gui("+AlwaysOnTop", "Progress")
-		pg.Add("Text",, text)
-		pg.Show("NoActivate")
-		return pg
-	}
-	
-	static Hide() {
-		if IsObject(this.pg){
-			this.pg.Hide()
-		}
+/**
+ * @description Executes a command and returns its output
+ * @param {String} cmd Command to execute
+ * @returns {String} Output of the command
+ */
+RunCmdAndGetOutput(cmd) {
+	try {
+		output := ""
+		output := ""
+		RunWait(cmd, , "Hide", &output)
+		return output
+	} catch {
+		return "Error executing command: " . cmd
 	}
 }
 
+/**
+ * @class ProgressGui
+ * @description Simple progress indicator GUI
+ */
+class ProgressGui {
+	pg := 0
+	textControl := 0
+	
+	/**
+	 * @description Show progress dialog
+	 * @param {String} title Dialog title
+	 * @param {String} text Status message
+	 * @returns {ProgressGui} Progress dialog instance
+	 */
+	Show(title, text) {
+		this.pg := Gui("+AlwaysOnTop +ToolWindow -SysMenu", title)
+		this.pg.SetFont("s10", "Segoe UI")
+		this.pg.BackColor := "EEEEEE"
+		
+		; Add text label
+		this.textControl := this.pg.AddText("w300 h60 Center", text)
+		
+		; Add progress bar
+		this.progressBar := this.pg.AddProgress("w300 h20 Range0-100", 0)
+		
+		; Show dialog
+		this.pg.Show("AutoSize Center")
+		
+		; Start progress animation
+		SetTimer(this.AnimateProgress.Bind(this), 100)
+		
+		return this
+	}
+	
+	/**
+	 * @description Update progress text
+	 * @param {String} text New status message
+	 */
+	UpdateText(text) {
+		this.textControl.Text := text
+	}
+	
+	/**
+	 * @description Animate progress bar
+	 */
+	AnimateProgress() {
+		static value := 0
+		value := Mod(value + 5, 100)
+		this.progressBar.Value := value
+	}
+	
+	/**
+	 * @description Close progress dialog
+	 */
+	Close() {
+		SetTimer(this.AnimateProgress.Bind(ProgressGui), 0)
+		this.pg.Destroy()
+	}
+}
+
+/**
+ * @class Settings
+ * @description Manage application settings
+ */
 class Settings {
 	static file := A_ScriptDir . "\git_sync_settings.ini"
+	static repos := []
 	
+	/**
+	 * @description Save repositories to settings file
+	 * @param {Array} repos Repositories to save
+	 */
 	static Save(repos) {
 		for i, repo in repos {
 			IniWrite(repo.remote, this.file, "Repo" . i, "remoteRepo")
@@ -629,6 +775,10 @@ class Settings {
 		}
 	}
 	
+	/**
+	 * @description Load settings from file
+	 * @returns {Object} Loaded settings
+	 */
 	static Load() {
 		settings := {
 			repos: [],
@@ -650,7 +800,7 @@ class Settings {
 			try {
 				remoteRepo := IniRead(this.file, "Repo" . i, "remoteRepo")
 				localRepo := IniRead(this.file, "Repo" . i, "localRepo")
-				branchRepo := IniRead(this.file, "Repo" . i, "branchRepo")
+				branchRepo := IniRead(this.file, "Repo" . i, "branchRepo", "master")
 				settings.repos.Push(GitRepo(remoteRepo, localRepo, branchRepo))
 				i++
 			}
@@ -660,6 +810,12 @@ class Settings {
 		return settings
 	}
 
+	/**
+	 * @description Get a setting value
+	 * @param {String} key Setting key
+	 * @param {String} default Default value
+	 * @returns {String} Setting value
+	 */
 	static Get(key, default := "") {
 		try {
 			return IniRead(this.file, "Settings", key)
@@ -668,34 +824,28 @@ class Settings {
 			return default
 		}
 	}
+
+	/**
+	 * @description Update a setting value
+	 * @param {String} key Setting key
+	 * @param {String} value Setting value
+	 */
+	static Set(key, value) {
+		IniWrite(value, this.file, "Settings", key)
+	}
 }
 
-class LogManager {
-	static LoadHistory() {
-		static logFile := A_ScriptDir . "\git_sync_history.log"
-		if FileExist(logFile) {
-			try {
-				history := FileRead(logFile)
-				return history
-			}
-		}
-		return ""
-	}
-	
-	static InitializeLog(logEdit) {
-		history := this.LoadHistory()
-		if history
-			logEdit.Value := history
-	}
-}
+/**
+ * @class SettingsGui
+ * @description Manages application settings GUI
+ */
 class SettingsGui {
-	static mainGui := ""
+    static mainGui := ""
 
 	static Create() {
 		settingsGui := Gui("+Owner" . this.mainGui.Hwnd . " +ToolWindow", "Repository Settings")
 		; settingsGui := Gui("+Owner" . mainGui.Hwnd . " +ToolWindow", "Repository Settings")
-		; settingsGui.BackColor := GuiColors.mColors['darkgray']
-		settingsGui.BackColor := StrReplace('#D3D3D3', '#', '0x')  ; Light gray color
+		settingsGui.BackColor := GuiColors.mColors['darkgray']
 		settingsGui.SetFont('s10 Q5', 'Segoe UI')
 		
 		; Settings controls
@@ -741,8 +891,7 @@ class SettingsGui {
 class AddRepoGui {
 	static Create() {
 		addGui := Gui("+Owner" . SettingsGui.mainGui.Hwnd . " +ToolWindow", "Add Repository")
-		; addGui.BackColor := GuiColors.mColors['darkgray']
-		addGui.BackColor := StrReplace('#D3D3D3', '#', '0x')  ; Light gray color
+		addGui.BackColor := GuiColors.mColors['darkgray']
 		addGui.SetFont('s10 Q5', 'Segoe UI')
 		
 		; Local repo section
@@ -794,26 +943,18 @@ class AddRepoGui {
 			editCtrl.Value := folder
 	}
 
-	static AddRepository(localPath, remotePath, branch, gui) {
+	static AddRepository(localPath, remotePath, branchName, gui) {
 		if (!localPath || !remotePath) {
 			MsgBox("Please provide both local and remote repository paths.", "Required Fields Missing", "Icon!")
 			return
 		}
-
+		
 		try {
-			; Create new repository entry
-			newRepo := GitRepo(remotePath, localPath, branch)
-			
-			; Add to settings
-			Settings.Save([newRepo])
-			
-			; Close the add repository dialog
-			gui.Hide()
-			
-			; Refresh main GUI
-			SettingsGui.mainGui.PostMessage(0x0111)  ; Simulate refresh
-		}
-		catch as err {
+			repo := GitRepo(remotePath, localPath, branchName)
+			Settings.repos.Push(repo)
+			Settings.Save(Settings.repos)
+			MsgBox("Repository added successfully.", "Success", "Info")
+		} catch as err {
 			MsgBox("Error adding repository: " err.Message, "Error", "Icon!")
 		}
 	}
@@ -821,8 +962,7 @@ class AddRepoGui {
 	static ShowExistingRepos() {
 		; Create a GUI to show existing repositories
 		repoGui := Gui("+Owner" . SettingsGui.mainGui.Hwnd . " +ToolWindow", "Existing Repositories")
-		; repoGui.BackColor := GuiColors.mColors['darkgray']
-		repoGui.BackColor := StrReplace('#D3D3D3', '#', '0x')  ; Light gray color
+		repoGui.BackColor := GuiColors.mColors['darkgray']
 		repoGui.SetFont('s10 Q5', 'Segoe UI')
 		
 		; Add ListView to show repos

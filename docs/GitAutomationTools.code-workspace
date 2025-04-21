@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../Lib"
+		},
+		{
+			"path": "../../AHK.Projects.v2"
+		}
+	],
+	"settings": {}
+}
